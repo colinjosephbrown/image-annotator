@@ -12,7 +12,7 @@ def totuple(a):
     except TypeError:
         return a
 
-class Annotater:
+class Annotator:
 
 	def __init__(self, img_dir, sub_dirs=None):
 		self.img_dir = img_dir
@@ -46,8 +46,8 @@ class Annotater:
 
 	def mouse_event(self, event, x, y, flags, param):
 		window_pt = np.array([x, y])
-		img_pt = self.img_coords(window_pt)
-		print(str(img_pt) + '=' + str(window_pt) + '/' + str(self.scale_factor))
+		img_pt = self.img_cords(window_pt)
+		#print(str(img_pt) + '=' + str(window_pt) + '/' + str(self.scale_factor))
 		
 		if event == cv2.EVENT_LBUTTONDOWN:
 			self.drawing_contour = True
@@ -83,17 +83,28 @@ class Annotater:
 		# Draw annotation regions
 		if self.cur_img_name in self.annots_dic:
 			for ann in self.annots_dic[self.cur_img_name]['annotations']:
-				pts = np.array(np.array(ann['points']) * self.scale_factor, np.int32)
+				pts = self.window_cords(np.array(ann['points'])).astype(np.int32)
 				cv2.fillPoly( self.vis_img, [pts], self.type_color[ann['type']])
 		
 		# Draw bounding box around currently selected annot
 		if self.selected_annot is not None:
 			ann = self.selected_annot
-			pt1 = np.array(ann['bbox']['x'], ann['bbox']['y']) * self.scale_factor[[1,0]]
-			pt2 = np.array(ann['bbox']['x'] + ann['bbox']['width'], ann['bbox']['y'] + ann['bbox']['height']) * self.scale_factor[[1,0]]
-			cv2.rectangle(self.vis_img, tuple(pt1.astype(int)), tuple(pt2.astype(int)), (0,0,0))
-			pt_mid = np.array(ann['bbox']['x'] + ann['bbox']['width']/2, ann['bbox']['y'] + ann['bbox']['height']/2) * self.scale_factor[[1,0]]
-			cv2.putText(self.vis_img, str(ann['score']), tuple(pt_mid.astype(int)), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2)
+			
+			pt1 = self.window_cords(np.array([ann['bbox']['x'], 
+												ann['bbox']['y']]))
+			pt2 = self.window_cords(np.array([ann['bbox']['x'] + ann['bbox']['width'], 
+												ann['bbox']['y'] + ann['bbox']['height']]))
+			
+			cv2.rectangle(self.vis_img, 
+							tuple(pt1.astype(int)), 
+							tuple(pt2.astype(int)), 
+							(0,0,0))
+			pt_mid = self.window_cords(np.array([ann['bbox']['x'] + ann['bbox']['width']/2, 
+												ann['bbox']['y'] + ann['bbox']['height']/2]))
+			cv2.putText(self.vis_img, 
+						str(ann['score']), 
+						tuple(pt_mid.astype(int)), 
+						cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,0), 2)
 		
 		self.draw_img = (self.vis_img / 2 + self.cur_img / 2) 
 	
@@ -105,7 +116,10 @@ class Annotater:
 		
 		# Add annotation
 		bbox = self.get_bbox(np.array(self.cur_contour, np.int32))
-		annot = {'type': self.cur_annot_type, 'points': self.cur_contour, 'score': 0, 'bbox': bbox}
+		annot = {'type': self.cur_annot_type, 
+				'points': self.cur_contour, 
+				'score': 0, 
+				'bbox': bbox}
 		self.selected_annot = annot
 		self.annots_dic[self.cur_img_name]['annotations'].append(annot)
 		
@@ -316,6 +330,6 @@ if __name__ == "__main__":
 	parser.add_argument("--first_image", "-i", default=None, type=str)
 	parser.add_argument("--sort", "-s", action="store_true")
 	args = parser.parse_args()
-	annotater = Annotater(img_dir=os.path.join('movies', 'movies'), 
+	annotator = Annotator(img_dir=os.path.join('movies', 'movies'), 
 						  sub_dirs=['', os.path.join('..', 't')])
-	annotater.main(args)
+	annotator.main(args)
