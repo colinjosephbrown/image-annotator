@@ -35,64 +35,74 @@ class ImageStats:
 		for score_col in range(len(self.tiles)):
 			self.tiles[score_col] = n*[None]
 		
-		for type in self.anns_by_score:
-			if type != show_type:
-				continue
-			for score in self.anns_by_score[type]:
-				if score not in self.score_col_index:
-					self.score_col_index[score] = 0
-				num_anns = len(self.anns_by_score[type][score])
-				max_i = min(n, num_anns)
+		type = show_type
+
+		for score in self.anns_by_score[type]:
+			if score not in self.score_col_index:
+				self.score_col_index[score] = 0
+			num_anns = len(self.anns_by_score[type][score])
+			max_i = min(n, num_anns)
+			
+			# Fill score column
+			i = 0
+			loop_count = 0
+			while i < max_i:
+				cur_index = self.score_col_index[score]
+				try:
+					(img_name, ann) = self.anns_by_score[type][score][cur_index]
+				except IndexError as e:
+					print(e)
+				if self.score_col_index[score] + 1 == num_anns:
+					loop_count += 1
+				if loop_count == 2:
+					break
+					
+				self.score_col_index[score] = (self.score_col_index[score] + 1) % num_anns
 				
-				# Fill score column
-				i = 0
-				while i < max_i:
-					cur_index = self.score_col_index[score]
-					try:
-						(img_name, ann) = self.anns_by_score[type][score][cur_index]
-					except IndexError as e:
-						print(e)
-					self.score_col_index[score] = (self.score_col_index[score] + 1) % num_anns
-					
-					# Load image
-					img_name = convert_str(img_name)
-					print('New safe img_name')
-					raw_img = cv2.imread( os.path.join(img_dir, img_name))
-					if raw_img is None:
-						print("Image " + img_name + " cannot be loaded...")
-						continue
-					raw_img = resize_img(raw_img)
-					imh, imw = raw_img.shape[:2]
-					
-					# Make bbox square
-					if ann['bbox']['width'] > ann['bbox']['height']:
-						ann['bbox']['y'] -= (ann['bbox']['width'] - ann['bbox']['height']) / 2
-						ann['bbox']['height'] = ann['bbox']['width']
-					else:
-						ann['bbox']['x'] -= (ann['bbox']['height'] - ann['bbox']['width']) / 2
-						ann['bbox']['width'] = ann['bbox']['height']
-					
-					# Crop to ann bbox
-					x1 = np.clip(ann['bbox']['x'], 0, imw)
-					x2 = np.clip(ann['bbox']['x']+ann['bbox']['width'], 0, imw)
-					y1 = np.clip(ann['bbox']['y'], 0, imh)
-					y2 = np.clip(ann['bbox']['y']+ann['bbox']['height'], 0, imh)
-					if x2 <= x1 or y2 <= y1:
-						print("Annotation has negative dim in image" + img_name )
-						continue
+				
+				# Load image
+				img_name = convert_str(img_name)
+				print('New safe img_name')
+				raw_img = cv2.imread( os.path.join(img_dir, img_name))
+				if raw_img is None:
+					print("Image " + img_name + " cannot be loaded...")
+					continue
+				raw_img = resize_img(raw_img)
+				imh, imw = raw_img.shape[:2]
+				
+				# Make bbox square
+				if ann['bbox']['width'] > ann['bbox']['height']:
+					ann['bbox']['y'] -= (ann['bbox']['width'] - ann['bbox']['height']) / 2
+					ann['bbox']['height'] = ann['bbox']['width']
+				else:
+					ann['bbox']['x'] -= (ann['bbox']['height'] - ann['bbox']['width']) / 2
+					ann['bbox']['width'] = ann['bbox']['height']
+				
+				# Crop to ann bbox
+				x1 = np.clip(ann['bbox']['x'], 0, imw).astype(int)
+				x2 = np.clip(ann['bbox']['x']+ ann['bbox']['width'], 0, imw).astype(int)
+				y1 = np.clip(ann['bbox']['y'], 0, imh).astype(int)
+				y2 = np.clip(ann['bbox']['y']+ ann['bbox']['height'], 0, imh).astype(int)
+				if x2 <= x1 or y2 <= y1:
+					print("Annotation has negative dim in image" + img_name )
+					continue
+				try:
 					cropped_img = raw_img[y1:y2, x1:x2]
-					
-					# Resize to 100x100
-					cropped_img = cv2.resize(cropped_img, (w, w))
-					
-					# Draw at x, y
-					bg_img[i*w:(i+1)*w, score*w:(score+1)*w] = cropped_img
-					
-					# Set tile
-					self.tiles[score][i] = {'file_name':img_name, 'annotation':ann}
-					
-					# Increment index
-					i += 1
+				except TypeError as e:
+					print(str(x1) + ' ' + str(x2) + ' ' + str(y1) + ' ' + str(y2))
+					raise
+				
+				# Resize to 100x100
+				cropped_img = cv2.resize(cropped_img, (w, w))
+				
+				# Draw at x, y
+				bg_img[i*w:(i+1)*w, score*w:(score+1)*w] = cropped_img
+				
+				# Set tile
+				self.tiles[score][i] = {'file_name':img_name, 'annotation':ann}
+				
+				# Increment index
+				i += 1
 					
 		cv2.imshow(self.cv2_window_name, bg_img)
 
