@@ -11,6 +11,7 @@ WIDTH = 'width'
 HEIGHT = 'height'
 ANN_TYPE = 'type'
 ANN_SCORE = 'score'
+ANN_POINTS = 'points'
 
 MAX_SCORE = 10
 
@@ -77,6 +78,17 @@ class ImageStats:
         self.ui_img = None
         self.bg_img = None
 
+        self.annotation_draw_mode = 2
+        self.hide_annotations_key_pressed = False
+
+        self.type_color = {'p': (200, 100, 0),
+                           'f': (0, 100, 255),
+                           't': (50, 200, 50),
+                           'h': (100, 50, 50),
+                           'a': (50, 0, 200),
+                           'c': (100, 50, 100),
+                           'l': (150, 0, 50)}
+
         # Create the window
         self.cv2_window_name = 'chart'
         cv2.namedWindow(self.cv2_window_name, cv2.WINDOW_NORMAL)
@@ -121,7 +133,7 @@ class ImageStats:
                 print('score:' + str(score))
                 print('type:' + str(type))
                 print(e)
-                #break
+                break #TODO: This is causing problems... figure it out
 
             if self.score_col_index[score] + 1 == num_anns:
                 loop_count += 1
@@ -153,6 +165,10 @@ class ImageStats:
         else:
             ann[BBOX]['x'] -= (ann[BBOX][HEIGHT] - ann[BBOX][WIDTH]) / 2
             ann[BBOX][WIDTH] = ann[BBOX][HEIGHT]
+
+        # Draw segmentation
+        pts = np.asarray(ann[ANN_POINTS])
+        cv2.polylines(raw_img, [pts], False, self.type_color[ann[ANN_TYPE]], thickness=4)
 
         # Crop to ann bbox
         x1 = np.clip(ann[BBOX]['x'], 0, imw).astype(int)
@@ -262,6 +278,15 @@ class ImageStats:
             for k in annot_type_keys:
                 if key == ord(k):
                     new_annot_type = k
+
+                if key == 32:
+                    self.hide_annotations_key_pressed = True
+                else:
+                    if self.hide_annotations_key_pressed:
+                        self.annotation_draw_mode += 1
+                        if self.annotation_draw_mode > 2:
+                            self.annotation_draw_mode = 0
+                    self.hide_annotations_key_pressed = False
 
             if new_annot_type is not None:
                 self.create_chart(show_type=new_annot_type)
