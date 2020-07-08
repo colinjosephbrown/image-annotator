@@ -51,7 +51,8 @@ class Annotator:
                            'c': (100, 50, 100),
                            'l': (150, 0, 50)}
         self.selected_annot = None
-        self.hide_annotations = False
+        self.annotation_draw_mode = 2
+        self.hide_annotations_key_pressed = False
 
     def load_db(self):
         self.dataset.load(path=self.db_filename)
@@ -118,14 +119,17 @@ class Annotator:
     def draw_annotations(self, cur_img):
         vis_img = cur_img.copy()
 
-        if self.hide_annotations:
+        if self.annotation_draw_mode == 0:
             return vis_img
 
         # Draw annotation regions
         if self.cur_img_name in self.dataset:
             for ann in self.dataset.get_annotations(img_name=self.cur_img_name):
                 pts = np.array(ann[ANN_POINTS]).astype(np.int32)
-                cv2.fillPoly(vis_img, [pts], self.type_color[ann[ANN_TYPE]])
+                if self.annotation_draw_mode == 1:
+                    cv2.fillPoly(vis_img, [pts], self.type_color[ann[ANN_TYPE]])
+                elif self.annotation_draw_mode == 2:
+                    cv2.polylines(vis_img, [pts], False, self.type_color[ann[ANN_TYPE]], thickness=4)
 
         # Draw bounding box around currently selected annot
         if self.selected_annot is not None:
@@ -302,10 +306,15 @@ class Annotator:
             key = cv2.waitKey(1) & 0xFF
 
             if key == 32:
-                self.hide_annotations = True
-                self.refresh_contour_img()
+                self.hide_annotations_key_pressed = True
+
             else:
-                self.hide_annotations = False
+                if self.hide_annotations_key_pressed:
+                    self.annotation_draw_mode += 1
+                    if self.annotation_draw_mode > 2:
+                        self.annotation_draw_mode = 0
+                    self.refresh_contour_img()
+                self.hide_annotations_key_pressed = False
             if key == ord("s"):
                 self.save_db()
             elif key == ord("."):
