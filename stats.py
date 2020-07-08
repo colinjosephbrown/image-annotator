@@ -64,7 +64,7 @@ def convert_str(thestr):
 
 
 class ImageStats:
-    def __init__(self, img_dir, tile_size=384, num_per_score=5):
+    def __init__(self, json_path, img_dir, tile_size=384, num_per_score=5):
         self.img_dir = img_dir
         self.tile_size = tile_size
         self.num_per_score = num_per_score
@@ -83,8 +83,7 @@ class ImageStats:
         cv2.setMouseCallback(self.cv2_window_name, self.mouse_event)
 
         # Load the json db and compute the stats
-        fn = 'unscaled_annots.json'
-        self.compute_indexes_and_stats(fn, recompute_bbox=True)
+        self.compute_indexes_and_stats(json_path, recompute_bbox=True)
 
     def create_chart(self, show_type='p'):
         print("Creating chart...")
@@ -291,5 +290,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--type", "-t", type=str)
     args = parser.parse_args()
-    stats = ImageStats(tile_size=384, num_per_score=5, img_dir=os.path.join('..', 'movies', 'movies'))
+    json_path = os.path.join('data', 'unscaled_annots.json')
+    stats = ImageStats(json_path=json_path,
+                       tile_size=384,
+                       num_per_score=5,
+                       img_dir=os.path.join('..', 'movies', 'movies'))
     stats.main()
