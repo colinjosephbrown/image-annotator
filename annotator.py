@@ -1,11 +1,12 @@
 import os
 import cv2
 import numpy as np
-import json
 import random
 import argparse
+from datetime import datetime
 
-from annotation_util import get_bbox
+from annotation_util import in_bbox
+from ps_dataset import PartScoreDataset
 
 MAX_WINDOW_SIZE = np.asarray([1000, 1800])  # [660, 1300]
 
@@ -36,7 +37,7 @@ class Annotator:
         self.cur_img = None
         self.contour_img = None
         self.cur_img_name = None
-        self.annots_dic = {}
+        self.dataset = PartScoreDataset()
         self.cur_annot_type = 'f'
         self.images = []
         self.cur_img_index = 0
@@ -53,36 +54,21 @@ class Annotator:
         self.hide_annotations = False
 
     def load_db(self):
-        with open(self.db_filename, 'r') as f:
-            self.annots_dic = json.load(f)
-
-        num_anns = 0
-        for img_name, img_ann in self.annots_dic.iteritems():
-            num_anns += len(img_ann[DB_ANNOTATIONS])
-
-        print("Found " + str(num_anns) + ' annotations in ' + str(len(self.annots_dic))
-              + " annotated images in " + self.db_filename)
+        self.dataset.load(path=self.db_filename)
 
     def add_annotation(self, img_name, contour, type):
-        # Add image annotation if it doesn't exist
-        if img_name not in self.annots_dic:
-            img_annot = {'file_name': img_name, DB_ANNOTATIONS: []}
-            self.annots_dic[img_name] = img_annot
-
-        # Add annotation
-        bbox = get_bbox(np.array(contour, np.int32))
-        annot = {ANN_TYPE: type,
-                 ANN_POINTS: contour,
-                 ANN_SCORE: 0,
-                 BBOX: bbox}
+        annot = self.dataset.add_annotation(img_name=img_name, type=type, points=contour)
         self.selected_annot = annot
-        self.annots_dic[img_name][DB_ANNOTATIONS].append(annot)
+
+    def save_backup_db(self):
+        orig_db_filename = self.db_filename
+        time_str = '_'.join(datetime.now().__str__().split(' ')).split('.')[0]
+        self.db_filename = os.path.splitext(self.db_filename)[0] + '.' + time_str + '.json'
+        self.save_db()
+        self.db_filename = orig_db_filename
 
     def save_db(self):
-        print('Saving...')
-        with open(self.db_filename, 'w') as f:
-            json.dump(self.annots_dic, f)
-        print('Saved to ' + self.db_filename)
+        self.dataset.save(path=self.db_filename)
 
     def window_cords(self, pt):
         return pt * self.scale_xy
@@ -114,8 +100,9 @@ class Annotator:
             self.drawing_contour = False
             if len(self.cur_contour) > 1:
                 self.add_annotation(img_name=self.cur_img_name,
-                                    contour=self.cur_contour,
-                                    type=self.cur_annot_type)
+                                    type=self.cur_annot_type,
+                                    contour=self.cur_contour
+                                    )
 
                 # Clear the current contour
                 self.cur_contour = []
@@ -135,8 +122,8 @@ class Annotator:
             return vis_img
 
         # Draw annotation regions
-        if self.cur_img_name in self.annots_dic:
-            for ann in self.annots_dic[self.cur_img_name][DB_ANNOTATIONS]:
+        if self.cur_img_name in self.dataset:
+            for ann in self.dataset.get_annotations(img_name=self.cur_img_name):
                 pts = np.array(ann[ANN_POINTS]).astype(np.int32)
                 cv2.fillPoly(vis_img, [pts], self.type_color[ann[ANN_TYPE]])
 
@@ -186,36 +173,10 @@ class Annotator:
 
         img_wh = np.asarray([self.cur_img.shape[1], self.cur_img.shape[0]])
 
-        self.check_annotations(img_name=self.cur_img_name, img_wh=img_wh)
+        self.dataset.check_annotations(img_name=self.cur_img_name, img_wh=img_wh)
 
         self.refresh_contour_img()
         self.draw()
-
-    def check_annotations(self, img_name, img_wh):
-        if img_name not in self.annots_dic:
-            return
-
-        remove_list = []
-        for ann in self.annots_dic[img_name][DB_ANNOTATIONS]:
-            ann_valid = True
-
-            if ann[BBOX]['x'] + ann[BBOX][WIDTH] <= 0:
-                ann_valid = False
-            elif ann[BBOX]['x'] > img_wh[0]:
-                ann_valid = False
-            elif ann[BBOX]['y'] + ann[BBOX][HEIGHT] <= 0:
-                ann_valid = False
-            elif ann[BBOX]['y'] > img_wh[1]:
-                ann_valid = False
-
-            if not ann_valid:
-                remove_list.append(ann)
-
-        if len(remove_list) > 0:
-            print(remove_list)
-
-        #for ann in remove_list:
-        #    self.annots_dic[self.cur_img_name][DB_ANNOTATIONS].remove(ann)
 
     def next_img(self, find_annot=False, target_image_name=None):
         img_name = None
@@ -225,7 +186,7 @@ class Annotator:
             if target_image_name is not None:
                 if img_name == target_image_name:
                     break
-            elif not find_annot or img_name in self.annots_dic:
+            elif not find_annot or img_name in self.dataset:
                 break
 
         if img_name is not None:
@@ -243,7 +204,7 @@ class Annotator:
             if target_image_name is not None:
                 if img_name == target_image_name:
                     break
-            elif not find_annot or img_name in self.annots_dic:
+            elif not find_annot or img_name in self.dataset:
                 break
 
         if img_name is not None:
@@ -253,24 +214,21 @@ class Annotator:
             self.load_image(img_name)
 
     def pick(self, x, y):
-        if self.cur_img_name in self.annots_dic:
-            for ann in self.annots_dic[self.cur_img_name][DB_ANNOTATIONS]:
-                if self.in_bbox(ann[BBOX], x, y):
+        if self.cur_img_name in self.dataset:
+            for ann in self.dataset.get_annotations(img_name=self.cur_img_name):
+                if in_bbox(ann[BBOX], x, y):
                     self.selected_annot = ann
                     break
         else:
             print('Cant pick, no annotations yet')
-
-    def in_bbox(self, bbox, x, y):
-        return x >= bbox['x'] and x <= bbox['x'] + bbox[WIDTH] and y >= bbox['y'] and y <= bbox['y'] + bbox[HEIGHT]
 
     def set_selected_type(self, type_char):
         if self.selected_annot is not None:
             self.selected_annot[ANN_TYPE] = type_char
 
     def delete_selected_annotation(self):
-        if self.cur_img_name in self.annots_dic and self.selected_annot is not None:
-            self.annots_dic[self.cur_img_name][DB_ANNOTATIONS].remove(self.selected_annot)
+        if self.cur_img_name in self.dataset and self.selected_annot is not None:
+            self.dataset.remove_annotation(img_name=self.cur_img_name, annot=self.selected_annot)
             self.selected_annot = None
             self.refresh_contour_img()
 
@@ -299,6 +257,8 @@ class Annotator:
         # Load annotations
         self.db_filename = args.db_filename
         self.load_db()
+
+        self.save_backup_db()
 
         # Get list of all files in dir
         self.images = []
@@ -415,8 +375,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--first_image', '-i', default=None, type=str)
     parser.add_argument('--sort', '-s', action='store_true')
-    parser.add_argument('--db_filename', '-j', default='unscaled_annots.json')
-    parser.add_argument('--image_path', '-p', default=os.path.join('movies', 'movies'))
+    parser.add_argument('--db_filename', '-j', default=os.path.join('data', 'unscaled_annots.json'))
+    parser.add_argument('--image_path', '-p', default=os.path.join('..', 'movies', 'movies'))
     args = parser.parse_args()
     annotator = Annotator(img_dir=args.image_path,
                           sub_dirs=['', os.path.join('..', 't')])
